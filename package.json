@@ -1,0 +1,30 @@
+{
+  "name": "puppeteer-sequence",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lab89/puppeteer-sequence.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/lab89/puppeteer-sequence/issues"
+  },
+  "homepage": "https://github.com/lab89/puppeteer-sequence#readme",
+  "dependencies": {
+    "chalk": "^4.1.1",
+    "cheerio": "^1.0.0-rc.6",
+    "moment": "^2.29.1",
+    "node-fetch": "^2.6.1",
+    "puppeteer": "^9.0.0",
+    "puppeteer-cluster": "^0.22.0",
+    "puppeteer-extra": "^3.1.18",
+    "puppeteer-extra-plugin-stealth": "^2.7.8",
+    "tsv": "^0.2.0"
+  }
+}
