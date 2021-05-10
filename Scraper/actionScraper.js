@@ -6,8 +6,8 @@ const chalk = require('chalk');
 
 /**  
  * @param {Object} page - puppeteer page * 
- * @param {String[]} hrefs - hrefs array
- * @param {String} startUrl - start url
+ * @param {String[]} hrefs - hrefs array *
+ * @param {String} startUrl - start url *
  */
 async function hrefsExtract(page, hrefs, startUrl){ 
   const hrefsToUrl = [];
@@ -27,10 +27,10 @@ async function hrefsExtract(page, hrefs, startUrl){
 };  
 
 /** 
- * @param {Object} page - puppeteer page
- * @param {ActionArray} actions - actions 
- * @param {string} startUrl - bot startUrl
- * @returns {ActionArray} final Actions Data
+ * @param {Object} page - puppeteer page *
+ * @param {ActionArray} actions - actions *
+ * @param {string} startUrl - bot startUrl *
+ * @returns {ActionArray} final Actions Data *
  */
 async function GenerateActionData(page, actions, startUrl){
   const root = actions.shift();

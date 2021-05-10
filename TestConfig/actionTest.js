@@ -33,6 +33,12 @@ exports.actionTest = {
               selector : 'div.quote>span.text',
               match : '',
               preprocess : ''
+            },
+            {
+              label : 'content2',
+              selector : 'div.quote>span.text',
+              match : '',
+              preprocess : ''
             }
           ] 
         }

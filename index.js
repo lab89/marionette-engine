@@ -1,7 +1,7 @@
 const {MarionetteEngine} = require('./MarionetteEngine');
 const hrefTest = require('./TestConfig/hrefTest');
 const actionTest = require('./TestConfig/actionTest');
-(async () => {  
+(async () => {    
   await MarionetteEngine([
     actionTest.actionTest
   ])
