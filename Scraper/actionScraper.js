@@ -291,6 +291,7 @@ function generateActions(actions, isCanceled){
       return {
         type : action.type,
         f : async(page) => {
+          if(isCanceled.flag) return;
           return new Promise((resolve, reject)=>{
             setTimeout(()=>{resolve(true)}, action.config.time)
           })
