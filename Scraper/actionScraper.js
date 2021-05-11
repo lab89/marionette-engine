@@ -3,7 +3,15 @@ const cheerio = require('cheerio');
 const fs = require('fs');
 const fetch = require('node-fetch');
 const chalk = require('chalk');
-const engine = require('../MarionetteEngine.js');
+const {eventBus} = require('../util')
+const robotsParser = require('robots-txt-parser');
+
+const robots = robotsParser(
+  {
+    userAgent: 'Googlebot', // The default user agent to use when looking for allow/disallow rules, if this agent isn't listed in the active robots.txt, we use *.
+    allowOnNeutral: false // The value to use when the robots.txt rule's for allow and disallow are balanced on whether a link can be crawled.
+  }
+);
 
 /**  
  * @param {Object} page - puppeteer page * 
@@ -12,7 +20,7 @@ const engine = require('../MarionetteEngine.js');
  */
 async function hrefsExtract(page, hrefs, startUrl){ 
   const hrefsToUrl = [];
-  async function dfs(url, deep = 0){        
+  async function dfs(url, deep = 0){            
     await page.goto(url);   
     const links = await getHrefs(page, hrefs[deep])        
     for(let i = 0; i < links.length; i++){      
@@ -33,7 +41,7 @@ async function hrefsExtract(page, hrefs, startUrl){
  * @param {string} startUrl - bot startUrl *
  * @returns {ActionArray} final Actions Data *
  */
-async function GenerateActionData(page, actions, startUrl){
+async function GenerateActionData(page, actions, startUrl, name){
   const root = actions.shift();
   Object.assign(root, { children : [] });
 
@@ -78,15 +86,15 @@ async function GenerateActionData(page, actions, startUrl){
       })
       if(root.children.length === 0) return;
       await flatten(page, root.children[0])
-    }
+    }   
   }
 
-  try {
+  try {    
     recur(actions, root);
     await flatten(page, root);
     return result
-  }catch(e){
-    console.log(e);
+  }catch(e){    
+    throw e
   }
 }
 /**
@@ -94,19 +102,26 @@ async function GenerateActionData(page, actions, startUrl){
  * @param {ActionArray} actions 
  * @returns {MarionetteAction[]}
  */
-function generateActions(actions, isCanceled){
+function generateActions(actions, isCanceled, name){
   return actions.map((action)=>{
     if(action.type === 'visit'){
       return {
         type : action.type,
         f : async (page) => {          
-          try {     
+          try {                 
             if(isCanceled.flag) return;   
-            await Promise.all([page.goto(action.config.url),page.waitForNavigation({waitUntil : 'load'})])
+            const result = robots.canCrawlSync(action.config.url)            
+            await Promise.all([page.goto(action.config.url),page.waitForNavigation({waitUntil : 'load'})])                      
+            return {
+              type : 'visit',
+              data : [action.config.url, result]
+            }
             // await page.goto(action.config.url)       
             // await page.waitForNavigation({waitUntil : 'domcontentloaded'})
-          }catch(e){
-            console.log(e)
+            // const base64 = await page.screenshot({ encoding: "base64" })
+            // console.log(base64)
+          }catch(e){                     
+            throw e
           }
         }
       }
@@ -179,7 +194,7 @@ function generateActions(actions, isCanceled){
             //   });          
             // }, action)              
           } catch(e){
-            console.log(e);
+            throw e
           }          
         }
       }      
@@ -247,11 +262,12 @@ function generateActions(actions, isCanceled){
               fileData.push(temp); 
             } 
             return {
+              type: 'scraping',
               images : images,
               fileData : fileData
             }
           }catch(e){
-            console.log(e);
+            throw e
           }
           
         }
@@ -273,7 +289,7 @@ function generateActions(actions, isCanceled){
               await Promise.all([page.click(action.config.target), page.waitForNavigation({waitUntil : 'load'})])   
             }
           }catch(e){
-            console.log(e);
+            throw e
           }          
         }
       }
@@ -281,9 +297,13 @@ function generateActions(actions, isCanceled){
       return {
         type : action.type,
         f : async(page)=>{
-          if(isCanceled.flag) return;
-          for(let i = 0 ; i < action.config.input.length; i++){
-            await page.type(action.config.input[i].tag, action.config.input[i].text)
+          try {
+            if(isCanceled.flag) return;
+            for(let i = 0 ; i < action.config.input.length; i++){
+              await page.type(action.config.input[i].tag, action.config.input[i].text)
+            }
+          }catch(e){
+            throw e
           }
         }
       }
@@ -291,27 +311,17 @@ function generateActions(actions, isCanceled){
       return {
         type : action.type,
         f : async(page) => {
-          if(isCanceled.flag) return;
-          return new Promise((resolve, reject)=>{
-            setTimeout(()=>{resolve(true)}, action.config.time)
-          })
-        }
-      }
-    }else if(action.type === 'href'){
-      return {
-        type : action.type,
-        f : async (page) => {
           try {
             if(isCanceled.flag) return;
-            const hrefs = await hrefsExtract({page : page, data : {hrefs : action.config.hrefs}})
-            return hrefs;
+            return new Promise((resolve, reject)=>{
+              setTimeout(()=>{resolve(true)}, action.config.time)
+            })
           }catch(e){
-            console.log(e);
+            throw e
           }
         }
       }
-    }
-    else if(action.type === 'download'){
+    }else if(action.type === 'download'){
 
     }else if(action.type === 'upload'){
 
@@ -325,17 +335,19 @@ function generateActions(actions, isCanceled){
  * @param {Object} page - puppeteer page
  * @param {ActionArray} data 
  */
-async function* sequenceAction(page, data, iscanceled){    
-  const actions = await generateActions(data, iscanceled) 
+async function* sequenceAction(page, data, iscanceled, name){    
+  const actions = await generateActions(data, iscanceled, name) 
   try {
     while(actions.length){  
       let action = actions.shift();      
       // console.log(action.type);
       const result = await action.f(page)      
-      if(action.type === 'scraping') yield result;          
+      if(action.type === 'scraping' || action.type === 'visit') yield result;      
     }
   }catch(e){
-    console.log(e);
+    eventBus.emit('log', null, name, {
+      error : e
+    });;
   }
 }
 
@@ -355,56 +367,69 @@ const actionScraper = async ({page, data, worker}) => {
         url : data.routine.config.startUrl
       }
     })    
-    engine.eb.on('cancel', (cancelBotName) => {      
+    eventBus.on('cancel', (cancelBotName) => {      
       if(cancelBotName === data.routine.name){
         console.log(chalk.redBright(cancelBotName + ' 봇 강제 종료'))  
         isCanceled.flag = true;
       }
     })
     
-    console.log(chalk.blueBright('액션 데이터 생성중'))  
-    const actionsData = await GenerateActionData(page, data.routine.config.actions, data.routine.config.startUrl);
-    if(actionsData[1].type === 'visit') actionsData.shift();
+    console.log(chalk.blueBright('액션 데이터 생성중'))      
+    const actionsData = await GenerateActionData(page, data.routine.config.actions, data.routine.config.startUrl, data.routine.name);
+    if(actionsData && actionsData.length && actionsData[1].type === 'visit') actionsData.shift();
     const fileData = actionsData.filter((d)=> d.type === 'scraping').map(()=> [])
+    const imgData = [];
+    const robotAccessAllowData = [];    
     console.log(chalk.blueBright('액션 데이터 생성 완료'))  
     console.log(chalk.greenBright('액션 시퀀스 실행 시작'))  
     for(let i = 0 ; i < data.routine.config.repeat; i++){
-      for await(const result of sequenceAction(page, actionsData, isCanceled)){     
+      for await(const result of sequenceAction(page, actionsData, isCanceled, data.routine.name)){     
         if(result){
-          if(result.images.length){
-            const imgDownloaded = {};
-            while(images.length){
-              const image = images.shift();
-              if(imgDownloaded.hasOwnProperty(image.filename)) continue;
-        
-              const response = await fetch(image.url)      
-              const dest = fs.writeFile(image.filename);
-              response.body.pipe(dest)
-              imgDownloaded[image.filename] = image.url;      
-            }    
-          }        
-          fileData[dataIdx].push(...result.fileData)
-          dataIdx++;
+          if(result.type === 'scraping'){
+            if(result.images.length){
+              const imgDownloaded = {};
+              while(images.length){
+                const image = images.shift();
+                if(imgDownloaded.hasOwnProperty(image.filename)) continue;
+          
+                // const response = await fetch(image.url)      
+                // const dest = fs.writeFile(image.filename);
+                // response.body.pipe(dest)
+                imgData.push(image);
+                imgDownloaded[image.filename] = image.url;      
+              }    
+            }        
+            fileData[dataIdx].push(...result.fileData)
+            dataIdx++;
+          }
+          else if(result.type === 'visit'){
+            robotAccessAllowData.push(result.data)
+          }
         }
       }
       dataIdx = 0;
     }
-    if(!isCanceled.flag){      
-      console.log(chalk.blueBright(data.routine.name + "의 결과를 json으로 기록중"))
+    if(!isCanceled.flag){            
       fileData.forEach((fileContent, i)=>{
-        fs.writeFileSync(
-          data.routine.name + '-data'+ i+'-result.json'
-          ,JSON.stringify(fileContent)
-          ,{'flag': 'a'}
-        );
+        // fs.writeFileSync(
+        //   data.routine.name + '-data'+ i+'-result.json'
+        //   ,JSON.stringify(fileContent)
+        //   ,{'flag': 'a'}
+        // );
+        eventBus.emit('text', null, data.routine.name, fileContent);
       }) 
-      console.log(chalk.blueBright(data.routine.name + "의 결과를 json으로 기록완료"))
+      eventBus.emit('image', null, data.routine.name, imgData);
+      eventBus.emit('robot', null, data.routine.name, robotAccessAllowData);
+      eventBus.emit('screenshot', null, data.routine.name, [])
+      console.log(chalk.blueBright(data.routine.name + "의 결과 data 전송"))
 
     }
     
     console.log(chalk.greenBright(data.routine.name + '의 액션 시퀀스 실행 종료'))      
   } catch(e){
-    console.log(e);
+    eventBus.emit('log', null, data.routine.name, {
+      error : e
+    });
   }
 }
 

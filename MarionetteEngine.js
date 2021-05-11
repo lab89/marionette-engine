@@ -1,21 +1,16 @@
-const cheerio = require('cheerio');
-const {getHrefs, wait} = require('./util');
-const fs = require('fs');
-const fetch = require('node-fetch')
 const { Cluster } = require('puppeteer-cluster')
 const vanillaPuppeteer = require('puppeteer')
 const { addExtra } = require('puppeteer-extra')
 const Stealth = require('puppeteer-extra-plugin-stealth')
 const chalk = require('chalk');
 const {actionScraper} = require('./Scraper/actionScraper')
-const eventBus = require('js-event-bus')();
-
-exports.eb = eventBus;
+const {eventBus} = require('./util');
 /**
  * execute list of routines. *
  * @param {Routine[]} routines - The routine include of action information* 
  */
-exports.MarionetteEngine = async (routines) => {  
+exports.MarionetteEventBus = eventBus;
+exports.MarionetteEngine = async (routines) => {    
   const puppeteer = addExtra(vanillaPuppeteer)
   puppeteer.use(Stealth())
 
@@ -24,16 +19,12 @@ exports.MarionetteEngine = async (routines) => {
     puppeteer,
     maxConcurrency: 2,
     concurrency: Cluster.CONCURRENCY_CONTEXT,
-    dumpio: true,    
     timeout : 2147483647, //32 bit signed integer max value
+    monitor : true,
     puppeteerOptions: {
       headless: true,
     },
   })
-
-  setTimeout(()=> {
-    eventBus.emit('cancel', null, 'bot1');
-  }, 10000)
 
   routines.forEach((routine)=>{
     cluster.queue({routine}, actionScraper)

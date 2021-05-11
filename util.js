@@ -38,4 +38,5 @@ exports.getHrefs = async function(page, selector) {
 exports.range = (l) => Array.apply(null, {length: l}).map(Number.call, Number);
 exports.wait = (start, end) => { 
   return new Promise(resolve => setTimeout(resolve, Math.floor((Math.random() * (end-start+1)) + start)));
-}; 
+};
+exports.eventBus = require('js-event-bus')()  
