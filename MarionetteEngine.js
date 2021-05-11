@@ -35,14 +35,6 @@ exports.MarionetteEngine = async (routines) => {
     eventBus.emit('cancel', null, 'bot1');
   }, 10000)
 
-  eventBus.on('cancelWorker', async (cancelBotName, workerId, deleteInf) => {      
-    console.log(chalk.redBright(cancelBotName + ' 봇 워커 종료'))       
-  })
-
-  eventBus.on('error', (errType, message) => {
-    // 에러 받습니다 ~ 
-  })
-
   routines.forEach((routine)=>{
     cluster.queue({routine}, actionScraper)
   })
