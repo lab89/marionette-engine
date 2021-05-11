@@ -3,6 +3,7 @@ const hrefTest = require('./TestConfig/hrefTest');
 const actionTest = require('./TestConfig/actionTest');
 (async () => {    
   await MarionetteEngine([
-    actionTest.actionTest
+    actionTest.actionTest,
+    hrefTest.heftTest,
   ])
 })()

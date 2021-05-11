@@ -8,6 +8,13 @@ const { addExtra } = require('puppeteer-extra')
 const Stealth = require('puppeteer-extra-plugin-stealth')
 const chalk = require('chalk');
 const {actionScraper} = require('./Scraper/actionScraper')
+const eventBus = require('js-event-bus')();
+
+exports.isCanceled = {
+  flag : false
+};
+  
+exports.eb = eventBus;
 
 
 /**
@@ -28,6 +35,34 @@ exports.MarionetteEngine = async (routines) => {
     puppeteerOptions: {
       headless: true,
     },
+  })
+
+  setTimeout(()=> {
+    eventBus.emit('cancel', null, 'bot1');
+  }, 10000)
+
+  eventBus.on('cancelWorker', async (cancelBotName, workerId, deleteInf) => {  
+    // console.log(cluster.workers.length)
+    // console.log(workerId)     
+    // console.log(cluster.workers[workerId])    
+    // cluster.workers.splice(workerId, 1);
+    // cluster.jobQueue.list.splice(workerId, 1);
+    // console.log(cluster.jobQueue.list);
+    // console.log(cluster.workers.length);
+    // const a = cluster.workersBusy.map((w, i)=> w.id === workerId ? i : null).filter((d)=> d !== null);
+    // if(a.length){            
+    //   cluster.workers[a[0]]
+    // }
+    // console.log(cluster.workersBusy)
+    // console.log(cluster.workersAvail)
+    console.log(chalk.redBright(cancelBotName + ' 봇 워커 종료'))   
+    this.isCanceled.flag = true;
+    // eventBus.emit('cancelTask', null, cancelBotName)
+    //삭제 정보를 넘겨 받고 .. 처리하는 곳
+  })
+
+  eventBus.on('error', (errType, message) => {
+    // 에러 받습니다 ~ 
   })
 
   routines.forEach((routine)=>{

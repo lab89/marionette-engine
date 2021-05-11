@@ -3,6 +3,7 @@ const cheerio = require('cheerio');
 const fs = require('fs');
 const fetch = require('node-fetch');
 const chalk = require('chalk');
+const engine = require('../MarionetteEngine.js');
 
 /**  
  * @param {Object} page - puppeteer page * 
@@ -93,13 +94,14 @@ async function GenerateActionData(page, actions, startUrl){
  * @param {ActionArray} actions 
  * @returns {MarionetteAction[]}
  */
-function generateActions(actions){
+function generateActions(actions, isCanceled){
   return actions.map((action)=>{
     if(action.type === 'visit'){
       return {
         type : action.type,
         f : async (page) => {          
-          try {
+          try {     
+            if(isCanceled.flag) return;   
             await Promise.all([page.goto(action.config.url),page.waitForNavigation({waitUntil : 'load'})])
             // await page.goto(action.config.url)       
             // await page.waitForNavigation({waitUntil : 'domcontentloaded'})
@@ -122,19 +124,26 @@ function generateActions(actions){
             //   console.log(vals.join('\t'));
             // });
             
-            await page.evaluate(()=> {    
+            await page.evaluate((isCanceled)=> {    
               const wait = (duration) => { 
                 console.log('waiting', duration);
                 return new Promise(resolve => setTimeout(resolve, duration)); 
               };          
               (async () => {
-                
+                if(isCanceled.flag) {
+                  window.atBottom = true
+                  return;
+                }
                 window.atBottom = false;
                 const scroller = document.documentElement;  // usually what you want to scroll, but not always
                 let lastPosition = -1;
                 while(!window.atBottom) {
                   scroller.scrollTop += 1000;
                   // scrolling down all at once has pitfalls on some sites: scroller.scrollTop = scroller.scrollHeight;
+                  if(isCanceled.flag) {
+                    window.atBottom = true
+                    break;
+                  }
                   await wait(300);
                   const currentPosition = scroller.scrollTop;
                   if (currentPosition > lastPosition) {
@@ -147,7 +156,7 @@ function generateActions(actions){
                 }
                 console.log('Done!');          
               })();          
-            });
+            }, isCanceled);
           
             await page.waitForFunction('window.atBottom == true', {
               timeout: 90000000,
@@ -183,8 +192,10 @@ function generateActions(actions){
             let $ = cheerio.load(content);       
             const scrapedTextMap = {}
             const images = []
-            
+            if(isCanceled.flag) return false;
+
             action.config.targets.forEach(async (target)=>{
+              if(isCanceled.flag) return;
               const label = target.label;
               const selector = target.selector;
               const el = $(selector);
@@ -195,6 +206,8 @@ function generateActions(actions){
               }
               else {
                 el.each(async (index, target)=>{
+                  
+                  if(isCanceled.flag) return;
                   const tag = $(target);
                   if(tag[0].name === 'img'){            
                     let src = tag.attr('src');
@@ -222,6 +235,7 @@ function generateActions(actions){
             const labels = Object.keys(scrapedTextMap);
   
             while(true){    
+              if(isCanceled.flag) return;
               let temp = {};
               for(let i = 0; i < columns.length; i++){
                 temp[labels[i]] = columns[i].shift();      
@@ -247,6 +261,7 @@ function generateActions(actions){
         type : action.type,
         f: async(page)=>{
           try {
+            if(isCanceled.flag) return;
             const content = await page.content();
             let $ = cheerio.load(content);    
             await page.waitForSelector(action.config.target)
@@ -266,6 +281,7 @@ function generateActions(actions){
       return {
         type : action.type,
         f : async(page)=>{
+          if(isCanceled.flag) return;
           for(let i = 0 ; i < action.config.input.length; i++){
             await page.type(action.config.input[i].tag, action.config.input[i].text)
           }
@@ -285,6 +301,7 @@ function generateActions(actions){
         type : action.type,
         f : async (page) => {
           try {
+            if(isCanceled.flag) return;
             const hrefs = await hrefsExtract({page : page, data : {hrefs : action.config.hrefs}})
             return hrefs;
           }catch(e){
@@ -307,12 +324,12 @@ function generateActions(actions){
  * @param {Object} page - puppeteer page
  * @param {ActionArray} data 
  */
-async function* sequenceAction(page, data){
-  const actions = await generateActions(data) 
+async function* sequenceAction(page, data, iscanceled){    
+  const actions = await generateActions(data, iscanceled) 
   try {
     while(actions.length){  
       let action = actions.shift();      
-      console.log(action.type);
+      // console.log(action.type);
       const result = await action.f(page)      
       if(action.type === 'scraping') yield result;          
     }
@@ -327,15 +344,23 @@ async function* sequenceAction(page, data){
  * @param {Object} param.data - cluster data 
  * @param {Routine} param.data.routine - routine
  */
-const actionScraper = async ({page, data}) => {
+const actionScraper = async ({page, data, worker}) => {
   try {
+    const isCanceled = {flag : false};
     let dataIdx = 0;
     data.routine.config.actions.unshift({
       type : 'visit',
       config : {
         url : data.routine.config.startUrl
       }
+    })    
+    engine.eb.on('cancel', (cancelBotName) => {      
+      if(cancelBotName === data.routine.name){
+        console.log(chalk.redBright(cancelBotName + ' 봇 강제 종료'))  
+        isCanceled.flag = true;
+      }
     })
+    
     console.log(chalk.blueBright('액션 데이터 생성중'))  
     const actionsData = await GenerateActionData(page, data.routine.config.actions, data.routine.config.startUrl);
     if(actionsData[1].type === 'visit') actionsData.shift();
@@ -343,32 +368,40 @@ const actionScraper = async ({page, data}) => {
     console.log(chalk.blueBright('액션 데이터 생성 완료'))  
     console.log(chalk.greenBright('액션 시퀀스 실행 시작'))  
     for(let i = 0 ; i < data.routine.config.repeat; i++){
-      for await(const result of sequenceAction(page, actionsData)){      
-        if(result.images.length){
-          const imgDownloaded = {};
-          while(images.length){
-            const image = images.shift();
-            if(imgDownloaded.hasOwnProperty(image.filename)) continue;
-      
-            const response = await fetch(image.url)      
-            const dest = fs.writeFile(image.filename);
-            response.body.pipe(dest)
-            imgDownloaded[image.filename] = image.url;      
-          }    
-        }        
-        fileData[dataIdx].push(...result.fileData)
-        dataIdx++;
+      for await(const result of sequenceAction(page, actionsData, isCanceled)){     
+        if(result){
+          if(result.images.length){
+            const imgDownloaded = {};
+            while(images.length){
+              const image = images.shift();
+              if(imgDownloaded.hasOwnProperty(image.filename)) continue;
+        
+              const response = await fetch(image.url)      
+              const dest = fs.writeFile(image.filename);
+              response.body.pipe(dest)
+              imgDownloaded[image.filename] = image.url;      
+            }    
+          }        
+          fileData[dataIdx].push(...result.fileData)
+          dataIdx++;
+        }
       }
       dataIdx = 0;
     }
-    fileData.forEach((fileContent, i)=>{
-      fs.writeFileSync(
-        data.routine.name + '-data'+ i+'-result.json'
-        ,JSON.stringify(fileContent)
-        ,{'flag': 'a'}
-      );
-    }) 
-    console.log(chalk.greenBright('액션 시퀀스 실행 종료'))  
+    if(!isCanceled.flag){      
+      console.log(chalk.blueBright(data.routine.name + "의 결과를 json으로 기록중"))
+      fileData.forEach((fileContent, i)=>{
+        fs.writeFileSync(
+          data.routine.name + '-data'+ i+'-result.json'
+          ,JSON.stringify(fileContent)
+          ,{'flag': 'a'}
+        );
+      }) 
+      console.log(chalk.blueBright(data.routine.name + "의 결과를 json으로 기록완료"))
+
+    }
+    
+    console.log(chalk.greenBright(data.routine.name + '의 액션 시퀀스 실행 종료'))      
   } catch(e){
     console.log(e);
   }

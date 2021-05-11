@@ -1,6 +1,6 @@
 exports.heftTest = {
-  type: 'action_scraping',
-  name: 'sequence-scraping-bot',
+  
+  name: 'bot2',
   config : {
     startUrl : 'http://quotes.toscrape.com',
     repeat : 1,       

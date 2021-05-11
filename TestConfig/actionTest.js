@@ -1,6 +1,5 @@
 exports.actionTest = {
-  type: 'action_scraping',
-  name: 'sequence-scraping-bot',
+  name: 'bot1',
   config : {
     startUrl : 'http://quotes.toscrape.com',
     repeat : 5,       

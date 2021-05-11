@@ -19,6 +19,7 @@
   "dependencies": {
     "chalk": "^4.1.1",
     "cheerio": "^1.0.0-rc.6",
+    "js-event-bus": "^1.1.0",
     "moment": "^2.29.1",
     "node-fetch": "^2.6.1",
     "puppeteer": "^9.0.0",
